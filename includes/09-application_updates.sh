@@ -16,78 +16,60 @@ invoke_application_updates () {
 # apt: update package indexes
 # ------------------------------------------------------------
 au_apt_update_indexes () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Refresh Debian/Ubuntu/Mint package indexes from all configured sources.
+  echo "Updating APT indexes..."
 
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Print a short "Updating APT indexes..." message.
-- Run the Debian-family command to refresh package lists (use apt).
-- Use sudo where appropriate and keep output concise.
-- On failure, print a brief warning but do not exit the script.
-- Print "APT index update complete." when finished.
-AI_BLOCK
+if ! sudo apt update -qq; then
+echo "Warning: APT index update encountered an error."
+fi
+
+echo "APT index update complete."
 }
 
 # ------------------------------------------------------------
 # apt: full upgrade (non-interactive)
 # ------------------------------------------------------------
 au_apt_full_upgrade () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Perform a non-interactive full upgrade of packages using apt.
+echo "Running APT full upgrade..."
 
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Print "Running APT full upgrade..." before starting.
-- Execute the Debian-family full upgrade command non-interactively (accept defaults/assume yes).
-- Use sudo; keep output concise.
-- If the upgrade fails, print a warning and continue.
-- Print "APT full upgrade complete." on success or after handling failure.
-AI_BLOCK
+if ! sudo DEBIAN_FRONTEND=noninteractive apt full-upgrade -y -qq; then
+echo "Warning: APT full upgrade encountered an error."
+fi
+
+echo "APT full upgrade complete."
 }
 
 # ------------------------------------------------------------
 # snap: refresh all snaps (if snap is installed)
 # ------------------------------------------------------------
 au_snap_refresh_all () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Update all installed Snap packages if Snap is available on the system.
+  if ! command -v snap >/dev/null 2>&1; then
+echo "Snap not installed; skipping."
+return
+fi
 
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Detect snap availability with a command check.
-- If not installed, print "Snap not installed; skipping." and return.
-- If installed:
-  - Print "Refreshing Snap packages..."
-  - Refresh all snaps using the standard snap command.
-  - Handle failures by printing a warning but do not exit the script.
-  - Print "Snap refresh complete." at the end.
-AI_BLOCK
+echo "Refreshing Snap packages..."
+
+if ! sudo snap refresh; then
+echo "Warning: Snap refresh encountered an error."
+fi
+
+echo "Snap refresh complete."
 }
 
 # ------------------------------------------------------------
 # flatpak: update all (if flatpak is installed)
 # ------------------------------------------------------------
 au_flatpak_update_all () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Update all installed Flatpak applications and runtimes if Flatpak is available.
+  if ! command -v flatpak >/dev/null 2>&1; then
+echo "Flatpak not installed; skipping."
+return
+fi
 
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Detect flatpak availability with a command check.
-- If not installed, print "Flatpak not installed; skipping." and return.
-- If installed:
-  - Print "Updating Flatpak apps/runtimes..."
-  - Update all installed Flatpaks non-interactively.
-  - Handle failures by printing a warning but do not exit the script.
-  - Print "Flatpak update complete." at the end.
-AI_BLOCK
+echo "Updating Flatpak apps/runtimes..."
+
+if ! flatpak update -y; then
+echo "Warning: Flatpak update encountered an error."
+fi
+
+echo "Flatpak update complete."
 }
