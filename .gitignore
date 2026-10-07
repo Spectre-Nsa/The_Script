@@ -1,0 +1,70 @@
+# --- OS cruft ---
+.DS_Store
+Thumbs.db
+Icon?
+ehthumbs.db
+*.icloud
+
+# --- Editors/IDEs ---
+.vscode/
+.idea/
+*.code-workspace
+.history/
+
+# IDE caches
+.vs/
+.vscode/
+.idea/
+
+# Build outputs
+bin/
+obj/
+
+# User-specific VS files
+*.user
+*.suo
+*.vcxproj.user
+
+# --- Shell/editor backups & temp files ---
+*~
+*.swp
+*.swo
+.[sS]wp
+*.bak
+*.old
+*.orig
+*.rej
+*.tmp
+*.temp
+
+# --- Logs & runtime artifacts ---
+logs/
+*.log
+tmp/
+temp/
+.cache/
+*.pid
+
+# --- Outputs / dumps (prevent accidental commits) ---
+System_Documentation/
+output/
+out/
+dist/
+build/
+
+# --- Archives ---
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.7z
+
+# --- Environment / secrets (if students experiment) ---
+.env
+.env.*
+.secrets
+*.key
+*.pem
+
+# --- Node (some students may test JS tooling) ---
+node_modules/
