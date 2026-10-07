@@ -19,136 +19,123 @@ invoke_user_auditing () {
 # 1) Interactive audit of local users with valid login shells
 # -------------------------------------------------------------------
 ua_audit_interactive_remove_unauthorized_users () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Enumerate local accounts that have a valid login shell (from /etc/shells). For each such user,
-prompt: "Is <user> an Authorized User? [Y/n]". Default to Y when the user presses Enter.
-If the answer is 'n' or 'N', remove the account and its home directory.
+valid_shells=$(grep -vE '^[[:space:]]*(#|$)' /etc/shells 2>/dev/null)
 
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Build the list of valid shells from /etc/shells, excluding comments/blank lines.
-- From getent passwd, select accounts whose shell is in that list; emit usernames only.
-- For each username:
-  - Prompt exactly: "Is <user> an Authorized User? [Y/n] " and read input.
-  - Treat empty input as 'Y' (default).
-  - If input matches 'n' or 'N', delete the user and its home (-r / -f as appropriate), then print a confirmation line.
-  - Otherwise print that the user is authorized.
-- Continue on errors for any single user so the loop completes.
-AI_BLOCK
+if [[ -z "$valid_shells" ]]; then
+echo "Warning: No valid login shells found in /etc/shells."
+else
+getent passwd |
+while IFS=: read -r user _ uid _ _ home shell; do
+if printf '%s\n' "$valid_shells" | grep -Fxq "$shell"; then
+read -r -p "Is $user an Authorized User? [Y/n] " answer
+answer="${answer:-Y}"
+
+        if [[ "$answer" == "n" || "$answer" == "N" ]]; then
+            if sudo userdel -r "$user" >/dev/null 2>&1; then
+                echo "Removed unauthorized user: $user"
+            else
+                echo "Warning: Could not remove user: $user"
+            fi
+        else
+            echo "$user is authorized."
+        fi
+    fi
+done
+
+fi
 }
 
 # -------------------------------------------------------------------
 # 2) Interactive audit of sudoers; remove unauthorized admins
 # -------------------------------------------------------------------
 ua_audit_interactive_remove_unauthorized_sudoers () {
-  : <<'AI_BLOCK'
-EXPLANATION
-List current members of the 'sudo' group and ask per-user whether they should remain an admin.
-Default answer is Y. If the answer is 'n' or 'N', remove that user from 'sudo'.
+for user in "${users[@]}"; do
+    [[ -z "$user" ]] && continue
 
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Get the member list from: getent group sudo (fourth field), split on commas into usernames.
-- For each user:
-  - Prompt exactly: "Is <user> an Authorized Administrator? [Y/n] " and read input.
-  - Default to Y on empty input.
-  - On 'n' or 'N', remove the user from sudo with the Debian-family tool (deluser <user> sudo) and print a confirmation.
-  - Otherwise print that the user is authorized.
-- Continue on errors so the loop completes.
-AI_BLOCK
+    read -r -p "Is $user an Authorized Administrator? [Y/n] " answer
+    answer="${answer:-Y}"
+
+    if [[ "$answer" == "n" || "$answer" == "N" ]]; then
+        if sudo deluser "$user" sudo >/dev/null 2>&1; then
+            echo "Removed $user from sudo group."
+        else
+            echo "Warning: Could not remove $user from sudo group."
+        fi
+    else
+        echo "$user is authorized."
+    fi
+done
 }
 
 # -------------------------------------------------------------------
 # 3) Force temporary passwords for all users
 # -------------------------------------------------------------------
 ua_force_temp_passwords () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Set a temporary password for every local account using SHA-512 hashing with chpasswd.
-If $TEMP_PASSWORD is set, use it; otherwise use the default "1CyberPatriot!".
+password="${TEMP_PASSWORD:-1CyberPatriot!}"
 
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Determine the password as: ${TEMP_PASSWORD:-1CyberPatriot!}.
-- Iterate over all usernames from getent passwd.
-- For each username, set "<user>:<password>" via chpasswd with SHA-512.
-- Continue on errors so one failure does not stop the loop.
-- Print a brief status line per user or a final summary.
-AI_BLOCK
+getent passwd | cut -d: -f1 | while IFS= read -r user; do
+if printf '%s:%s\n' "$user" "$password" | sudo chpasswd -c SHA512 2>/dev/null; then
+echo "Set temporary password for $user."
+else
+echo "Warning: Could not set password for $user."
+fi
+done
 }
 
 # -------------------------------------------------------------------
 # 4) Remove any UID 0 accounts that are not 'root'
 # -------------------------------------------------------------------
 ua_remove_non_root_uid0 () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Find accounts with UID 0 other than 'root' and remove them (including home directories).
-
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Parse /etc/passwd (or getent) for entries with UID exactly 0 where the username != root.
-- For each such username:
-  - Delete the user and its home directory (force where appropriate).
-  - Print a confirmation line.
-- Continue on errors so the loop completes.
-AI_BLOCK
+getent passwd | while IFS=: read -r user _ uid _ _ _ _; do
+if [[ "$uid" == "0" && "$user" != "root" ]]; then
+if sudo userdel -r -f "$user" >/dev/null 2>&1; then
+echo "Removed UID 0 account: $user"
+else
+echo "Warning: Could not remove UID 0 account: $user"
+fi
+fi
+done
 }
 
 # -------------------------------------------------------------------
 # 5) Set password aging policy for all users (Debian family)
 # -------------------------------------------------------------------
 ua_set_password_aging_policy () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Apply a simple password aging policy to every local account: max age 60 days, min age 10 days, warn 7 days.
-
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Iterate over all usernames from getent passwd.
-- For each username, run the chage command with: -M 60 -m 10 -W 7.
-- Continue on errors; print minimal status or a final summary.
-AI_BLOCK
+  getent passwd | cut -d: -f1 | while IFS= read -r user; do
+if sudo chage -M 60 -m 10 -W 7 "$user" >/dev/null 2>&1; then
+echo "Applied password aging policy to $user."
+else
+echo "Warning: Could not apply password aging policy to $user."
+fi
+done
 }
 
 # -------------------------------------------------------------------
 # 6) Set shells for standard users and root to /bin/bash
 # -------------------------------------------------------------------
 ua_set_shells_standard_and_root_bash () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Change the login shell to /bin/bash for accounts with UID 0 (root) and for standard users (UID >= 1000).
-
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Read /etc/passwd line by line.
-- If UID is 0 or >= 1000, set the shell to /bin/bash using usermod -s.
-- Print "Changed shell for <user> to /bin/bash." for each change.
-- Continue on errors so the loop completes.
-AI_BLOCK
+while IFS=: read -r user _ uid _ _ _ _; do
+if [[ "$uid" -eq 0 || "$uid" -ge 1000 ]]; then
+if sudo usermod -s /bin/bash "$user" >/dev/null 2>&1; then
+echo "Changed shell for $user to /bin/bash."
+else
+echo "Warning: Could not change shell for $user."
+fi
+fi
+done < /etc/passwd
 }
 
 # -------------------------------------------------------------------
 # 7) Set shells for system accounts to /usr/sbin/nologin
 # -------------------------------------------------------------------
 ua_set_shells_system_accounts_nologin () {
-  : <<'AI_BLOCK'
-EXPLANATION
-For system accounts (UID 1..999), set the shell to /usr/sbin/nologin.
-
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Read /etc/passwd line by line.
-- If UID is between 1 and 999 inclusive, set the shell to /usr/sbin/nologin using usermod -s.
-- Print "Changed shell for <user> to /usr/sbin/nologin." for each change.
-- Continue on errors so the loop completes.
-AI_BLOCK
+while IFS=: read -r user _ uid _ _ _ _; do
+if [[ "$uid" -ge 1 && "$uid" -le 999 ]]; then
+if sudo usermod -s /usr/sbin/nologin "$user" >/dev/null 2>&1; then
+echo "Changed shell for $user to /usr/sbin/nologin."
+else
+echo "Warning: Could not change shell for $user."
+fi
+fi
+done < /etc/passwd
 }
