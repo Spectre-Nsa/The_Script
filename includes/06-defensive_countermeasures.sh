@@ -17,91 +17,84 @@ invoke_defensive_countermeasures () {
 # UFW: reset to factory defaults (non-interactive)
 # ------------------------------------------------------------
 dcm_ufw_reset_factory () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Reset UFW to factory settings without prompting.
-
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Run the UFW reset command in forced/non-interactive mode.
-- Print a short confirmation when complete.
-AI_BLOCK
+ sudo ufw --force reset
+echo "UFW reset complete."
 }
 
 # ------------------------------------------------------------
 # UFW: ensure enabled now and on boot
 # ------------------------------------------------------------
 dcm_ufw_enable_and_boot () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Enable the firewall immediately and ensure it starts on boot via systemd.
+  sudo ufw enable
+echo "UFW enabled."
 
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Enable UFW (if already enabled, do nothing harmful).
-- Enable the ufw systemd unit for boot.
-- Print concise status lines for both actions.
-AI_BLOCK
+sudo systemctl enable ufw
+echo "UFW enabled at boot."
 }
 
 # ------------------------------------------------------------
 # UFW: loopback policy (allow lo in/out, deny spoofed loopback)
 # ------------------------------------------------------------
 dcm_ufw_loopback_policy () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Set loopback rules:
-- Allow inbound and outbound on interface lo.
-- Deny inbound traffic claiming to be from 127.0.0.0/8 and from ::1.
+  sudo ufw allow in on lo
+echo "UFW: allowed inbound traffic on lo."
 
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Add UFW rules to allow in on lo and allow out on lo.
-- Add UFW rules to deny in from 127.0.0.0/8 and from ::1.
-- Print confirmations for each rule.
-AI_BLOCK
+sudo ufw allow out on lo
+echo "UFW: allowed outbound traffic on lo."
+
+sudo ufw deny in from 127.0.0.0/8
+echo "UFW: denied inbound traffic from 127.0.0.0/8."
+
+sudo ufw deny in from ::1
+echo "UFW: denied inbound traffic from ::1."
 }
 
 # ------------------------------------------------------------
 # UFW: deny ICMP echo-request (ping) responses
 # ------------------------------------------------------------
 dcm_ufw_deny_ping () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Configure UFW to drop inbound ICMP echo-request (ping) for both IPv4 and IPv6.
-Use the recommended UFW approach by editing before.rules/before6.rules so the drop occurs
-before default ICMP accepts. Reload UFW afterward.
+ timestamp=$(date +%Y%m%d_%H%M%S)
 
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Create timestamped backups of:
-  - /etc/ufw/before.rules
-  - /etc/ufw/before6.rules
-- In before.rules, ensure a rule exists to drop ICMP echo-request in the ufw-before-input chain
-  (placed before generic ICMP accept rules).
-- In before6.rules, ensure a rule exists to drop IPv6 ICMP echo-request similarly.
-- Make edits idempotent (do not insert duplicates on subsequent runs).
-- Reload UFW to apply changes and print a confirmation.
-- Include brief comments in the inserted blocks so students can find them later.
-AI_BLOCK
+for file in /etc/ufw/before.rules /etc/ufw/before6.rules; do
+if [[ -f "$file" ]]; then
+sudo cp -a "$file" "${file}.${timestamp}.bak"
+fi
+done
+
+if [[ -f /etc/ufw/before.rules ]] && ! sudo grep -qF '# CYBERPATRIOT: Drop IPv4 ICMP echo-request' /etc/ufw/before.rules; then
+sudo awk '
+/-A ufw-before-input/ && /-p icmp/ && /--icmp-type/ && !inserted {
+print "# CYBERPATRIOT: Drop IPv4 ICMP echo-request"
+print "-A ufw-before-input -p icmp --icmp-type echo-request -j DROP"
+inserted=1
+}
+{ print }
+' /etc/ufw/before.rules | sudo tee /tmp/before.rules. >/dev/null && sudo mv /tmp/before.rules. /etc/ufw/before.rules
+fi
+
+if [[ -f /etc/ufw/before6.rules ]] && ! sudo grep -qF '# CYBERPATRIOT: Drop IPv6 ICMP echo-request' /etc/ufw/before6.rules; then
+sudo awk '
+/-A ufw6-before-input/ && /-p icmpv6/ && /--icmpv6-type/ && !inserted {
+print "# CYBERPATRIOT: Drop IPv6 ICMP echo-request"
+print "-A ufw6-before-input -p icmpv6 --icmpv6-type echo-request -j DROP"
+inserted=1
+}
+{ print }
+' /etc/ufw/before6.rules | sudo tee /tmp/before6.rules. >/dev/null && sudo mv /tmp/before6.rules. /etc/ufw/before6.rules
+fi
+
+if sudo ufw reload; then
+echo "UFW ICMP echo-request drop rules applied and UFW reloaded."
+else
+echo "Warning: UFW reload failed."
+fi
+
 }
 
 # ------------------------------------------------------------
 # UFW: allow SSH
 # ------------------------------------------------------------
 dcm_ufw_allow_ssh () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Allow SSH through the firewall using the standard UFW application profile.
-
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Add a rule to allow SSH (use the named profile, not a hardcoded port).
-- Print a short confirmation of the rule addition.
-AI_BLOCK
+ sudo ufw allow OpenSSH
+echo "UFW: allowed SSH using the OpenSSH profile."
 }
