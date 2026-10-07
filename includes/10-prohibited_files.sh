@@ -13,19 +13,18 @@ invoke_prohibited_files () {
 # Remove files matching extensions from $FILE_EXTENSIONS
 # -------------------------------------------------------------------
 pf_remove_prohibited_files () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Delete files across the filesystem whose extensions are listed in the Bash array $FILE_EXTENSIONS
-(defined in config.sh). For each extension, print a status line before deleting matching files.
+  
+if [[ -z "${FILE_EXTENSIONS+x}" || ${#FILE_EXTENSIONS[@]} -eq 0 ]]; then
+echo "No file extensions configured."
+return
+fi
 
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Read the Bash array $FILE_EXTENSIONS. If unset or empty, print "No file extensions configured." and return.
-- For each extension value (e.g., mp3), print: "Searching and removing files with .<ext> extension..."
-- Recursively search from / for regular files matching "*.<ext>" and delete them.
-- Suppress noisy errors (e.g., permission denied) so the loop continues.
-- Continue on errors for individual deletions; do not abort the script.
-- Print minimal confirmations or a final summary when done.
-AI_BLOCK
+for ext in "${FILE_EXTENSIONS[@]}"; do
+echo "Searching and removing files with .${ext} extension..."
+
+find / -type f -name "*.${ext}" -exec rm -f -- {} + 2>/dev/null || true
+
+done
+
+echo "File extension cleanup complete."
 }
