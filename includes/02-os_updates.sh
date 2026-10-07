@@ -16,84 +16,112 @@ invoke_os_updates () {
 # Update APT sources based on distro/codename (Debian family)
 # ------------------------------------------------------------
 osu_update_sources_for_distro () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Refresh APT sources based on distro:
-- Ubuntu: overwrite /etc/apt/sources.list using $CODENAME (from config.sh) with main, universe, multiverse, -updates, -security, -backports.
-- Linux Mint: write the official list to /etc/apt/sources.list.d/official-package-repositories.list using Mint codename and the underlying Ubuntu codename (read UBUNTU_CODENAME from /etc/os-release).
-- Debian: skip with a friendly message (do not change sources).
-Back up any file you overwrite (e.g., .bak). Use sudo where needed.
+  case "$DISTRO" in
+Ubuntu|ubuntu)
+if [[ -f /etc/apt/sources.list ]]; then
+sudo cp -a /etc/apt/sources.list "/etc/apt/sources.list.$(date +%Y%m%d_%H%M%S).bak"
+fi
 
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Read $DISTRO and $CODENAME from the environment (already exported by config.sh).
-- For Ubuntu:
-  - Create a backup of /etc/apt/sources.list if it exists.
-  - Overwrite /etc/apt/sources.list with four lines that use $CODENAME and include main, universe, multiverse for base, -updates, -security, -backports.
-  - Use a safe method for writing with sudo (e.g., tee).
-- For Linux Mint:
-  - Source /etc/os-release and read UBUNTU_CODENAME.
-  - Create a backup of /etc/apt/sources.list.d/official-package-repositories.list if it exists.
-  - Overwrite that file with the standard Mint line using the Mint codename, plus the five Ubuntu lines using $UBUNTU_CODENAME (base, -updates, -backports, -security) similar to Ubuntu above.
-- For Debian:
-  - Print a message like "Debian detected; leaving sources as-is." and do nothing.
-- Print a brief confirmation of what was changed or skipped.
-AI_BLOCK
+    if sudo tee /etc/apt/sources.list >/dev/null <<EOF
+
+deb http://archive.ubuntu.com/ubuntu $CODENAME main universe multiverse
+deb http://archive.ubuntu.com/ubuntu $CODENAME-updates main universe multiverse
+deb http://security.ubuntu.com/ubuntu $CODENAME-security main universe multiverse
+deb http://archive.ubuntu.com/ubuntu $CODENAME-backports main universe multiverse
+EOF
+then
+echo "Ubuntu APT sources updated for $CODENAME."
+else
+echo "Warning: Failed to update Ubuntu APT sources."
+fi
+;;
+
+LinuxMint|linuxmint|Mint|mint)
+    source /etc/os-release
+    UBUNTU_CODENAME="${UBUNTU_CODENAME:-}"
+
+    if [[ -z "$UBUNTU_CODENAME" ]]; then
+        echo "Warning: UBUNTU_CODENAME not found; Mint sources were not changed."
+    else
+        file="/etc/apt/sources.list.d/official-package-repositories.list"
+
+        if [[ -f "$file" ]]; then
+            sudo cp -a "$file" "$file.$(date +%Y%m%d_%H%M%S).bak"
+        fi
+
+        if sudo tee "$file" >/dev/null <<EOF
+
+deb http://packages.linuxmint.com $CODENAME main upstream import backport
+deb http://archive.ubuntu.com/ubuntu $UBUNTU_CODENAME main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu $UBUNTU_CODENAME-updates main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu $UBUNTU_CODENAME-backports main restricted universe multiverse
+deb http://security.ubuntu.com/ubuntu $UBUNTU_CODENAME-security main restricted universe multiverse
+EOF
+then
+echo "Linux Mint APT sources updated for $CODENAME using Ubuntu $UBUNTU_CODENAME."
+else
+echo "Warning: Failed to update Linux Mint APT sources."
+fi
+fi
+;;
+
+Debian|debian)
+    echo "Debian detected; leaving sources as-is."
+    ;;
+
+*)
+    echo "Unknown distribution; leaving APT sources as-is."
+    ;;
+
+esac
 }
 
 # ------------------------------------------------------------
 # apt update
 # ------------------------------------------------------------
 osu_apt_update () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Update package indexes from all configured sources.
+echo "Updating APT package indexes..."
 
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Run the Debian-family command to refresh package lists (apt).
-- Show a short status message before/after.
-- Non-interactive is fine; do not upgrade here.
-AI_BLOCK
+if sudo apt update -qq; then
+echo "APT package indexes updated."
+else
+echo "Warning: APT package index update failed."
+fi
 }
 
 # ------------------------------------------------------------
 # apt --fix-broken install
 # ------------------------------------------------------------
 osu_fix_broken_packages () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Attempt to fix broken package dependencies.
+ echo "Attempting to fix broken package dependencies..."
 
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Run the Debian-family command to fix broken packages.
-- Use a non-interactive approach suitable for scripts.
-- Print a short status line on completion.
-AI_BLOCK
+if sudo DEBIAN_FRONTEND=noninteractive apt --fix-broken install -y -qq; then
+echo "Broken package dependencies fixed."
+else
+echo "Warning: Failed to fix broken package dependencies."
+fi
 }
 
 # ------------------------------------------------------------
 # apt-mark: unhold all currently held packages
 # ------------------------------------------------------------
 osu_unhold_packages () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Unhold every package currently marked as "hold" on Debian/Ubuntu/Mint. Do not rely on a predefined list.
+held_packages=$(apt-mark showhold)
 
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Query the list of held packages using the appropriate apt-mark command.
-- If none are held, print: "No held packages found." and return.
-- Iterate over each held package name safely (handle spaces/newlines robustly).
-- For each package:
-  - Unhold it via the apt-mark command (use sudo where appropriate).
-  - Print a confirmation line: "Unheld: <package>".
-- Use non-interactive behavior; if unholding one package fails, continue with the rest and print a short warning.
-AI_BLOCK
+if [[ -z "$held_packages" ]]; then
+echo "No held packages found."
+return
+fi
+
+while IFS= read -r package; do
+[[ -z "$package" ]] && continue
+
+if sudo apt-mark unhold "$package" >/dev/null 2>&1; then
+    echo "Unheld: $package"
+else
+    echo "Warning: Failed to unhold $package; continuing."
+fi
+
+done <<< "$held_packages"
 }
 
