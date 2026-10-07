@@ -13,26 +13,45 @@ invoke_unwanted_software () {
 # Purge unwanted software listed in $UNWANTED_SOFTWARE, then autoremove
 # -------------------------------------------------------------------
 us_purge_unwanted_software () {
-  : <<'AI_BLOCK'
-EXPLANATION
-Remove unwanted packages defined in $UNWANTED_SOFTWARE, then run apt autoremove.
-$UNWANTED_SOFTWARE is provided by config.sh (as a space-separated list or array).
+ if [[ -z "${UNWANTED_SOFTWARE+x}" ]]; then
+echo "No unwanted software configured."
+return
+fi
 
-AI_PROMPT
-Return only Bash code (no markdown, no prose).
-Requirements:
-- Read $UNWANTED_SOFTWARE. If empty/unset, print "No unwanted software configured." and return.
-- Iterate each package name safely (support either: a space-separated string or a Bash array).
-- For each name:
-  - Print "Purging unwanted package: <name>..."
-  - Purge using apt in non-interactive mode, accepting that the actual installed package may have suffixes; match with a trailing wildcard.
-  - Suppress noisy output, but still handle failures.
-  - On purge failure:
-    - Print a brief warning.
-    - Run "sudo dpkg --configure -a".
-    - Retry the purge once; print success or final failure.
-  - Continue to the next name regardless of errors.
-- After the loop, run "sudo apt autoremove -y" quietly and print "Autoremove complete."
-- Use sudo for all package-management commands.
-AI_BLOCK
+if declare -p UNWANTED_SOFTWARE 2>/dev/null | grep -q 'declare -a'; then
+packages=("${UNWANTED_SOFTWARE[@]}")
+else
+read -r -a packages <<< "$UNWANTED_SOFTWARE"
+fi
+
+if [[ ${#packages[@]} -eq 0 ]]; then
+echo "No unwanted software configured."
+return
+fi
+
+for name in "${packages[@]}"; do
+[[ -z "$name" ]] && continue
+
+echo "Purging unwanted package: ${name}..."
+
+if sudo DEBIAN_FRONTEND=noninteractive apt purge -y -qq "${name}*" >/dev/null 2>&1; then
+    echo "Purged ${name}."
+else
+    echo "Warning: Initial purge failed for ${name}; repairing dpkg state..."
+
+    sudo dpkg --configure -a >/dev/null 2>&1 || true
+
+    if sudo DEBIAN_FRONTEND=noninteractive apt purge -y -qq "${name}*" >/dev/null 2>&1; then
+        echo "Purged ${name} after retry."
+    else
+        echo "Warning: Final purge failed for ${name}."
+    fi
+fi
+
+done
+
+sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y -qq >/dev/null 2>&1 ||
+echo "Warning: APT autoremove encountered an error."
+
+echo "Autoremove complete."
 }
